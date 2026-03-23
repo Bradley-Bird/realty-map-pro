@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { PropertyListing, ModuleConfig, FilterState } from '../types';
+import type { PropertyListing, ModuleConfig, FilterState, UserProfile } from '../types';
 import { sampleListings } from '../data/sample-listings';
 
 interface AppContextType {
@@ -14,6 +14,13 @@ interface AppContextType {
   setModules: (modules: ModuleConfig) => void;
   isPanelOpen: boolean;
   setIsPanelOpen: (open: boolean) => void;
+  // Auth / profile
+  user: UserProfile | null;
+  showSignInModal: boolean;
+  setShowSignInModal: (show: boolean) => void;
+  signInAsGuest: (name: string, email: string, phone: string) => void;
+  signOut: () => void;
+  toggleSavedListing: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -38,10 +45,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [modules, setModules] = useState<ModuleConfig>(defaultModules);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [showSignInModal, setShowSignInModal] = useState(true);
 
   const setSelectedListing = (listing: PropertyListing | null) => {
     setSelectedListingState(listing);
     setIsPanelOpen(listing !== null);
+  };
+
+  const signInAsGuest = (name: string, email: string, phone: string) => {
+    setUser({
+      name,
+      email,
+      phone,
+      authProvider: 'guest',
+      savedListings: [],
+      contactPreferences: { email: true, phone: false, text: false },
+    });
+    setShowSignInModal(false);
+  };
+
+  const signOut = () => {
+    setUser(null);
+    setShowSignInModal(true);
+  };
+
+  const toggleSavedListing = (id: string) => {
+    if (!user) return;
+    setUser({
+      ...user,
+      savedListings: user.savedListings.includes(id)
+        ? user.savedListings.filter((s) => s !== id)
+        : [...user.savedListings, id],
+    });
   };
 
   const filteredListings = sampleListings.filter((listing) => {
@@ -73,6 +109,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setModules,
         isPanelOpen,
         setIsPanelOpen,
+        user,
+        showSignInModal,
+        setShowSignInModal,
+        signInAsGuest,
+        signOut,
+        toggleSavedListing,
       }}
     >
       {children}

@@ -5,6 +5,7 @@ import PropertyMap from './components/PropertyMap';
 import ListingSidebar from './components/ListingSidebar';
 import PropertyPanel from './components/PropertyPanel';
 import ModuleToggle from './components/ModuleToggle';
+import SignInModal from './components/SignInModal';
 
 function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -60,6 +61,7 @@ function AppLayout() {
         <ModuleToggle />
         <PropertyPanel />
       </div>
+      <SignInModal />
     </div>
   );
 }

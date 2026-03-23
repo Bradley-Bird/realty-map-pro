@@ -53,3 +53,19 @@ export interface FilterState {
   minBeds: number;
   type: string;
 }
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  phone: string;
+  avatar?: string;
+  authProvider: 'google' | 'apple' | 'guest';
+  savedListings: string[];
+  preferredPriceRange?: { min: number; max: number };
+  preferredPropertyType?: string;
+  contactPreferences: {
+    email: boolean;
+    phone: boolean;
+    text: boolean;
+  };
+}

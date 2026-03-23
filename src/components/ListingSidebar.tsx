@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, SlidersHorizontal, Bed, Bath, Square, Calendar } from 'lucide-react';
+import { Search, SlidersHorizontal, Bed, Bath, Square, Calendar, User, LogOut, Heart, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import type { PropertyListing, FilterState } from '../types';
 
@@ -11,9 +11,11 @@ interface ListingCardProps {
   listing: PropertyListing;
   isSelected: boolean;
   onClick: () => void;
+  isSaved: boolean;
+  onToggleSave: (e: React.MouseEvent) => void;
 }
 
-function ListingCard({ listing, isSelected, onClick }: ListingCardProps) {
+function ListingCard({ listing, isSelected, onClick, isSaved, onToggleSave }: ListingCardProps) {
   const statusColor = {
     active: 'bg-green-100 text-green-700',
     pending: 'bg-yellow-100 text-yellow-700',
@@ -41,6 +43,13 @@ function ListingCard({ listing, isSelected, onClick }: ListingCardProps) {
         <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1">
           <span className="text-sm font-bold text-gray-900">{listing.daysOnMarket}d</span>
         </div>
+        <button
+          onClick={onToggleSave}
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white transition-colors shadow-sm"
+          title={isSaved ? 'Remove from saved' : 'Save listing'}
+        >
+          <Heart className={`h-3.5 w-3.5 transition-colors ${isSaved ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+        </button>
       </div>
       <div className="p-3">
         <div className="text-lg font-bold text-gray-900">{formatPrice(listing.price)}</div>
@@ -121,12 +130,85 @@ function FilterPanel({ filters, onChange }: FilterPanelProps) {
   );
 }
 
+function ProfileSection() {
+  const { user, signOut, setShowSignInModal } = useApp();
+
+  if (!user) {
+    return (
+      <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-gray-400">
+          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+            <User className="h-4 w-4" />
+          </div>
+          <span className="text-sm text-gray-500">Not signed in</span>
+        </div>
+        <button
+          onClick={() => setShowSignInModal(true)}
+          className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
+        >
+          Sign in
+          <ChevronRight className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
+
+  const initials = user.name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  const providerLabel =
+    user.authProvider === 'guest'
+      ? 'Guest Mode'
+      : user.authProvider === 'google'
+        ? 'Google'
+        : 'Apple';
+
+  return (
+    <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center gap-2.5">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+        {user.avatar ? (
+          <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+        ) : (
+          initials
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <span>{providerLabel}</span>
+          {user.savedListings.length > 0 && (
+            <>
+              <span>·</span>
+              <Heart className="h-3 w-3 fill-red-400 text-red-400" />
+              <span>{user.savedListings.length} saved</span>
+            </>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={signOut}
+        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        title="Sign out"
+      >
+        <LogOut className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export default function ListingSidebar() {
-  const { filteredListings, selectedListing, setSelectedListing, filters, setFilters } = useApp();
+  const { filteredListings, selectedListing, setSelectedListing, filters, setFilters, user, toggleSavedListing } = useApp();
   const [showFilters, setShowFilters] = useState(false);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
+      {/* Profile section */}
+      <ProfileSection />
+
       {/* Header */}
       <div className="p-4 bg-white border-b border-gray-100">
         <div className="flex items-center gap-2 mb-3">
@@ -171,6 +253,8 @@ export default function ListingSidebar() {
               listing={listing}
               isSelected={selectedListing?.id === listing.id}
               onClick={() => setSelectedListing(listing)}
+              isSaved={user?.savedListings.includes(listing.id) ?? false}
+              onToggleSave={(e) => { e.stopPropagation(); toggleSavedListing(listing.id); }}
             />
           ))
         )}

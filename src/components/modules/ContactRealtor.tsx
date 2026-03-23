@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Phone, Mail, Star, Send, CheckCircle } from 'lucide-react';
 import type { RealtorInfo } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface ContactRealtorProps {
   realtor: RealtorInfo;
@@ -8,7 +9,13 @@ interface ContactRealtorProps {
 }
 
 export default function ContactRealtor({ realtor, address }: ContactRealtorProps) {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', message: `Hi ${realtor.name}, I'm interested in ${address}. Please contact me with more information.` });
+  const { user } = useApp();
+  const [form, setForm] = useState({
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    phone: user?.phone ?? '',
+    message: `Hi ${realtor.name}, I'm interested in ${address}. Please contact me with more information.`,
+  });
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
