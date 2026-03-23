@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { MapPin, X, User, AlertCircle } from 'lucide-react';
+import { MapPin, X, User, AlertCircle, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const APPLE_CLIENT_ID = import.meta.env.VITE_APPLE_CLIENT_ID as string | undefined;
 
 function GoogleIcon() {
   return (
@@ -33,6 +36,13 @@ function AppleIcon() {
   );
 }
 
+/** Decode a JWT payload without verifying the signature (client-side only). */
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const part = token.split('.')[1];
+  const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(atob(base64));
+}
+
 interface GuestFormState {
   name: string;
   email: string;
@@ -40,16 +50,138 @@ interface GuestFormState {
 }
 
 export default function SignInModal() {
-  const { showSignInModal, setShowSignInModal, signInAsGuest } = useApp();
-  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
+  const { showSignInModal, setShowSignInModal, signInAsGuest, signInWithOAuth } = useApp();
+  const [notice, setNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null);
   const [showGuestForm, setShowGuestForm] = useState(false);
   const [guestForm, setGuestForm] = useState<GuestFormState>({ name: '', email: '', phone: '' });
+  const [loading, setLoading] = useState<'google' | 'apple' | null>(null);
 
   if (!showSignInModal) return null;
 
-  const handleOAuthClick = (provider: 'Google' | 'Apple') => {
-    setOauthNotice(`${provider} sign-in not configured yet — coming soon!`);
-    setTimeout(() => setOauthNotice(null), 4000);
+  const showError = (message: string) => {
+    setNotice({ type: 'error', message });
+    setTimeout(() => setNotice(null), 6000);
+  };
+
+  const showInfo = (message: string) => {
+    setNotice({ type: 'info', message });
+    setTimeout(() => setNotice(null), 8000);
+  };
+
+  const handleGoogleSignIn = () => {
+    if (!GOOGLE_CLIENT_ID) {
+      showInfo(
+        'Google Sign-In needs a Client ID. Set VITE_GOOGLE_CLIENT_ID in your .env file — see .env.example for instructions.'
+      );
+      return;
+    }
+
+    if (!window.google?.accounts?.id) {
+      showError('Google Sign-In library failed to load. Check your network and try again.');
+      return;
+    }
+
+    setLoading('google');
+
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      cancel_on_tap_outside: true,
+      callback: (response) => {
+        setLoading(null);
+        try {
+          const payload = decodeJwtPayload(response.credential);
+          signInWithOAuth({
+            name: (payload.name as string) || 'Google User',
+            email: (payload.email as string) || '',
+            avatar: payload.picture as string | undefined,
+            phone: '',
+            authProvider: 'google',
+            savedListings: [],
+            contactPreferences: { email: true, phone: false, text: false },
+          });
+        } catch {
+          showError('Failed to read Google account info. Please try again.');
+        }
+      },
+    });
+
+    window.google.accounts.id.prompt((notification) => {
+      if (
+        notification.isNotDisplayed() ||
+        notification.isSkippedMoment() ||
+        notification.isDismissedMoment()
+      ) {
+        setLoading(null);
+        const reason = notification.isNotDisplayed()
+          ? notification.getNotDisplayedReason()
+          : notification.isSkippedMoment()
+          ? notification.getSkippedReason()
+          : notification.getDismissedReason();
+        // 'credential_returned' means success already handled by callback — ignore
+        if (reason !== 'credential_returned') {
+          // Prompt was suppressed (e.g. user previously dismissed One Tap)
+          // Fall back to a redirect-style popup via renderButton pattern,
+          // or just inform the user.
+          if (reason === 'suppressed_by_user') {
+            showInfo(
+              'Google One Tap was suppressed. Clear your browser cookies for this site, or try again later.'
+            );
+          }
+        }
+      }
+    });
+  };
+
+  const handleAppleSignIn = async () => {
+    if (!APPLE_CLIENT_ID) {
+      showInfo(
+        'Apple Sign-In needs a Services ID. Set VITE_APPLE_CLIENT_ID in your .env file — see .env.example for instructions.'
+      );
+      return;
+    }
+
+    if (!window.AppleID) {
+      showError('Apple Sign-In library failed to load. Check your network and try again.');
+      return;
+    }
+
+    setLoading('apple');
+
+    try {
+      window.AppleID.auth.init({
+        clientId: APPLE_CLIENT_ID,
+        scope: 'name email',
+        redirectURI: window.location.origin,
+        usePopup: true,
+      });
+
+      const response = await window.AppleID.auth.signIn();
+
+      const firstName = response.user?.name?.firstName || '';
+      const lastName = response.user?.name?.lastName || '';
+      const fullName = [firstName, lastName].filter(Boolean).join(' ');
+
+      signInWithOAuth({
+        name: fullName || 'Apple User',
+        email: response.user?.email || '',
+        phone: '',
+        authProvider: 'apple',
+        savedListings: [],
+        contactPreferences: { email: true, phone: false, text: false },
+      });
+    } catch (err: unknown) {
+      setLoading(null);
+      // User closed the popup — not an error
+      if (
+        err &&
+        typeof err === 'object' &&
+        'error' in err &&
+        (err as { error: string }).error === 'popup_closed_by_user'
+      ) {
+        return;
+      }
+      showError('Apple Sign-In failed. Please try again or use another method.');
+    }
   };
 
   const handleGuestSubmit = (e: React.FormEvent) => {
@@ -92,11 +224,21 @@ export default function SignInModal() {
         </div>
 
         <div className="px-6 pb-6 space-y-3">
-          {/* OAuth notice */}
-          {oauthNotice && (
-            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />
-              <span>{oauthNotice}</span>
+          {/* Notice banner */}
+          {notice && (
+            <div
+              className={`flex items-start gap-2 p-3 rounded-xl text-sm border ${
+                notice.type === 'error'
+                  ? 'bg-red-50 border-red-200 text-red-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}
+            >
+              <AlertCircle
+                className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                  notice.type === 'error' ? 'text-red-500' : 'text-amber-500'
+                }`}
+              />
+              <span>{notice.message}</span>
             </div>
           )}
 
@@ -104,19 +246,29 @@ export default function SignInModal() {
             <>
               {/* Google button */}
               <button
-                onClick={() => handleOAuthClick('Google')}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                onClick={handleGoogleSignIn}
+                disabled={loading !== null}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <GoogleIcon />
+                {loading === 'google' ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+                ) : (
+                  <GoogleIcon />
+                )}
                 Continue with Google
               </button>
 
               {/* Apple button */}
               <button
-                onClick={() => handleOAuthClick('Apple')}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-black border border-black rounded-xl text-sm font-medium text-white hover:bg-gray-900 transition-all shadow-sm"
+                onClick={handleAppleSignIn}
+                disabled={loading !== null}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-black border border-black rounded-xl text-sm font-medium text-white hover:bg-gray-900 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <AppleIcon />
+                {loading === 'apple' ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                ) : (
+                  <AppleIcon />
+                )}
                 Continue with Apple
               </button>
 
@@ -130,7 +282,8 @@ export default function SignInModal() {
               {/* Guest option */}
               <button
                 onClick={() => setShowGuestForm(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                disabled={loading !== null}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <User className="h-4 w-4" />
                 Continue as Guest

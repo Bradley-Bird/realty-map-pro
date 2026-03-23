@@ -19,6 +19,7 @@ interface AppContextType {
   showSignInModal: boolean;
   setShowSignInModal: (show: boolean) => void;
   signInAsGuest: (name: string, email: string, phone: string) => void;
+  signInWithOAuth: (profile: UserProfile) => void;
   signOut: () => void;
   toggleSavedListing: (id: string) => void;
 }
@@ -62,6 +63,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedListings: [],
       contactPreferences: { email: true, phone: false, text: false },
     });
+    setShowSignInModal(false);
+  };
+
+  const signInWithOAuth = (profile: UserProfile) => {
+    setUser(profile);
     setShowSignInModal(false);
   };
 
@@ -113,6 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         showSignInModal,
         setShowSignInModal,
         signInAsGuest,
+        signInWithOAuth,
         signOut,
         toggleSavedListing,
       }}
